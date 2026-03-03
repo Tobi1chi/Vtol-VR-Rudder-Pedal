@@ -193,9 +193,9 @@ bool SerialCommand::handlePendingInput(int argc, char** argv) {
     }
     if (_awaitingSetValue) {
         _awaitingSetValue = false;
-        bool ok = applySetValue(_pendingSetKey, argv[0]);
+        applySetValue(_pendingSetKey, argv[0]);
         _pendingSetKey[0] = '\0';
-        return ok;
+        return true;
     }
     return false;
 }
