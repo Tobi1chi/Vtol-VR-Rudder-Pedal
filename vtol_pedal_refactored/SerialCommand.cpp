@@ -1,19 +1,20 @@
 #include "SerialCommand.h"
 
-// Register commands: Name | Handler Function | Requires Parameter
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+
 const CommandEntry SerialCommand::commands[] = {
-    {"RESET",       &SerialCommand::cmdReset,   false},
-    {"BLE",         &SerialCommand::cmdBle,     false},
-    {"HID",         &SerialCommand::cmdHid,     false},
-    {"Debug",       &SerialCommand::cmdDebug,   false},
-    {"Curve",       &SerialCommand::cmdCurve,   true},
-    {"Filter",      &SerialCommand::cmdFilter,  true},
-    {"minRudder_L", &SerialCommand::cmdMinL,    true},
-    {"minRudder_R", &SerialCommand::cmdMinR,    true},
-    {"maxRudder_L", &SerialCommand::cmdMaxL,    true},
-    {"maxRudder_R", &SerialCommand::cmdMaxR,    true},
-    {"ERange",      &SerialCommand::cmdERange,  true},
-    {"Test",        &SerialCommand::cmdTest,    false}
+    {"help", &SerialCommand::cmdHelp},
+    {"status", &SerialCommand::cmdStatus},
+    {"mode", &SerialCommand::cmdMode},
+    {"debug", &SerialCommand::cmdDebug},
+    {"test", &SerialCommand::cmdTest},
+    {"set", &SerialCommand::cmdSet},
+    {"save", &SerialCommand::cmdSave},
+    {"factory_reset", &SerialCommand::cmdFactoryReset},
 };
 
 const int SerialCommand::numCommands = sizeof(commands) / sizeof(commands[0]);
@@ -23,186 +24,283 @@ SerialCommand::SerialCommand() {}
 void SerialCommand::begin(RudderSettings* settings) {
     _settings = settings;
     loadPreferences();
+    Serial.println("OK: serial CLI ready. Type 'help'.");
 }
 
 void SerialCommand::checkSerial() {
     while (Serial.available()) {
         char ch = Serial.read();
         if (ch == '\n' || ch == '\r') {
-            inputBuffer[inputIndex] = '\0';
-            if (inputIndex > 0) { // Ignore empty lines
-                handleInput(inputBuffer);
+            if (inputIndex > 0) {
+                inputBuffer[inputIndex] = '\0';
+                handleLine(inputBuffer);
+                inputIndex = 0;
             }
-            inputIndex = 0;
         } else {
-            if (inputIndex < sizeof(inputBuffer) - 1) {
+            if (inputIndex < INPUT_BUFFER_SIZE - 1) {
                 inputBuffer[inputIndex++] = ch;
+            } else {
+                inputIndex = 0;
+                printErr("input too long; max 127 chars");
             }
         }
     }
 }
 
-void SerialCommand::handleInput(const char* input) {
-    // State 1: Waiting for parameter value
-    if (waitingForValue && pendingCommand != nullptr) {
-        int value = atoi(input);
-        // Call the stored handler
-        (this->*(pendingCommand->handler))(value);
-        
-        // Reset state
-        waitingForValue = false;
-        pendingCommand = nullptr;
+void SerialCommand::handleLine(char* input) {
+    char* argv[MAX_TOKENS];
+    int argc = tokenize(input, argv, MAX_TOKENS);
+    if (argc == 0) {
         return;
     }
 
-    // State 2: Parsing new command
-    const CommandEntry* cmd = findCommand(input);
-    if (cmd) {
-        if (cmd->requiresValue) {
-            Serial.printf("Please input value for %s:\n", cmd->name);
-            waitingForValue = true;
-            pendingCommand = cmd;
-        } else {
-            // No parameter needed, execute immediately with dummy value
-            (this->*(cmd->handler))(0);
-        }
-    } else {
-        Serial.println("Match Failed: ERROR");
+    toLowerInPlace(argv[0]);
+    const CommandEntry* cmd = findCommand(argv[0]);
+    if (cmd == nullptr) {
+        printErr("unknown command; type 'help'");
+        return;
     }
+    (this->*(cmd->handler))(argc, argv);
 }
 
 const CommandEntry* SerialCommand::findCommand(const char* name) {
     for (int i = 0; i < numCommands; i++) {
         if (strcmp(name, commands[i].name) == 0) {
-            Serial.print("Match Success: ");
-            Serial.println(commands[i].name);
             return &commands[i];
         }
     }
     return nullptr;
 }
 
-// --- Command Implementations ---
-
-void SerialCommand::cmdReset(int val) {
-    prefs.begin("presets", false);
-    prefs.putInt("bootCount", 0);
-    prefs.end();
-    Serial.println("Boot count reset");
+int SerialCommand::tokenize(char* input, char** argv, int maxTokens) {
+    int argc = 0;
+    char* token = strtok(input, " \t");
+    while (token != nullptr && argc < maxTokens) {
+        argv[argc++] = token;
+        token = strtok(nullptr, " \t");
+    }
+    return argc;
 }
 
-void SerialCommand::cmdBle(int val) {
-    _settings->MODE = 0;
-    prefs.begin("presets", false);
-    prefs.putInt("MODE", 0);
-    prefs.end();
-    Serial.println("Switched to BLE Mode");
-}
-
-void SerialCommand::cmdHid(int val) {
-    _settings->MODE = 1;
-    prefs.begin("presets", false);
-    prefs.putInt("MODE", 1);
-    prefs.end();
-    Serial.println("Switched to HID Mode");
-}
-
-void SerialCommand::cmdDebug(int val) {
-    _settings->printControl = !_settings->printControl;
-    Serial.println(_settings->printControl ? "Debug ON" : "Debug OFF");
-}
-
-void SerialCommand::cmdTest(int val) {
-    _settings->Test = !_settings->Test;
-    Serial.println(_settings->Test ? "Test Mode ON" : "Test Mode OFF");
-}
-
-void SerialCommand::cmdCurve(int val) {
-    if (val > 0 && val < 4096) {
-        _settings->Curve = val;
-        prefs.begin("presets", false);
-        prefs.putInt("Curve", val);
-        prefs.end();
-        Serial.printf("Curve set to %d\n", val);
+void SerialCommand::toLowerInPlace(char* text) {
+    for (int i = 0; text[i] != '\0'; i++) {
+        text[i] = (char)tolower((unsigned char)text[i]);
     }
 }
 
-void SerialCommand::cmdFilter(int val) {
-    if (val > 0 && val < 4096) {
-        _settings->Filter = val;
-        prefs.begin("presets", false);
-        prefs.putInt("Filter", val);
-        prefs.end();
-        Serial.printf("Filter set to %d\n", val);
+void SerialCommand::cmdHelp(int argc, char** argv) {
+    (void)argv;
+    if (!expectArgCount("help", argc, 1)) {
+        return;
     }
+
+    Serial.println("OK: commands");
+    Serial.println("  help");
+    Serial.println("  status");
+    Serial.println("  mode hid|ble");
+    Serial.println("  debug on|off");
+    Serial.println("  test on|off");
+    Serial.println("  set curve 0|1");
+    Serial.println("  set filter 0|1");
+    Serial.println("  set min_l 1..4095");
+    Serial.println("  set min_r 1..4095");
+    Serial.println("  set max_l 1..4095");
+    Serial.println("  set max_r 1..4095");
+    Serial.println("  set erange 1..4095");
+    Serial.println("  save");
+    Serial.println("  factory_reset");
 }
 
-void SerialCommand::cmdMinL(int val) {
-    if (val > 0 && val < 4096) {
-        _settings->minRudder_L = val;
-        prefs.begin("presets", false);
-        prefs.putInt("minRudder_L", val);
-        prefs.end();
-        Serial.printf("minRudder_L set to %d\n", val);
+void SerialCommand::cmdStatus(int argc, char** argv) {
+    (void)argv;
+    if (!expectArgCount("status", argc, 1)) {
+        return;
     }
+
+    Serial.printf("STATUS: MODE=%s\n", _settings->MODE == MODE_HID ? "HID" : "BLE");
+    Serial.printf("STATUS: Curve=%d\n", _settings->Curve);
+    Serial.printf("STATUS: Filter=%d\n", _settings->Filter);
+    Serial.printf("STATUS: minRudder_L=%d\n", _settings->minRudder_L);
+    Serial.printf("STATUS: minRudder_R=%d\n", _settings->minRudder_R);
+    Serial.printf("STATUS: maxRudder_L=%d\n", _settings->maxRudder_L);
+    Serial.printf("STATUS: maxRudder_R=%d\n", _settings->maxRudder_R);
+    Serial.printf("STATUS: ERange=%d\n", _settings->ERange);
+    Serial.printf("STATUS: Test=%s\n", _settings->Test ? "ON" : "OFF");
+    Serial.printf("STATUS: Debug=%s\n", _settings->printControl ? "ON" : "OFF");
 }
 
-void SerialCommand::cmdMinR(int val) {
-    if (val > 0 && val < 4096) {
-        _settings->minRudder_R = val;
-        prefs.begin("presets", false);
-        prefs.putInt("minRudder_R", val);
-        prefs.end();
-        Serial.printf("minRudder_R set to %d\n", val);
+void SerialCommand::cmdMode(int argc, char** argv) {
+    if (!expectArgCount("mode", argc, 2)) {
+        return;
     }
+
+    toLowerInPlace(argv[1]);
+    int targetMode = -1;
+    if (strcmp(argv[1], "hid") == 0) {
+        targetMode = MODE_HID;
+    } else if (strcmp(argv[1], "ble") == 0) {
+        targetMode = MODE_BLE;
+    } else {
+        printErr("mode must be hid|ble");
+        return;
+    }
+
+    _settings->MODE = targetMode;
+    persistInt("MODE", targetMode);
+    printOk(String("MODE=") + (targetMode == MODE_HID ? "HID" : "BLE") + " persisted");
 }
 
-void SerialCommand::cmdMaxL(int val) {
-    if (val > 0 && val < 4096) {
-        _settings->maxRudder_L = val;
-        prefs.begin("presets", false);
-        prefs.putInt("maxRudder_L", val);
-        prefs.end();
-        Serial.printf("maxRudder_L set to %d\n", val);
+void SerialCommand::cmdDebug(int argc, char** argv) {
+    if (!expectArgCount("debug", argc, 2)) {
+        return;
     }
+
+    toLowerInPlace(argv[1]);
+    if (strcmp(argv[1], "on") == 0) {
+        _settings->printControl = true;
+    } else if (strcmp(argv[1], "off") == 0) {
+        _settings->printControl = false;
+    } else {
+        printErr("debug must be on|off");
+        return;
+    }
+
+    printOk(String("Debug=") + (_settings->printControl ? "ON" : "OFF"));
 }
 
-void SerialCommand::cmdMaxR(int val) {
-    if (val > 0 && val < 4096) {
-        _settings->maxRudder_R = val;
-        prefs.begin("presets", false);
-        prefs.putInt("maxRudder_R", val);
-        prefs.end();
-        Serial.printf("maxRudder_R set to %d\n", val);
+void SerialCommand::cmdTest(int argc, char** argv) {
+    if (!expectArgCount("test", argc, 2)) {
+        return;
     }
+
+    toLowerInPlace(argv[1]);
+    if (strcmp(argv[1], "on") == 0) {
+        _settings->Test = true;
+    } else if (strcmp(argv[1], "off") == 0) {
+        _settings->Test = false;
+    } else {
+        printErr("test must be on|off");
+        return;
+    }
+
+    printOk(String("Test=") + (_settings->Test ? "ON" : "OFF"));
 }
 
-void SerialCommand::cmdERange(int val) {
-    if (val > 0 && val < 4096) {
-        _settings->ERange = val;
-        prefs.begin("presets", false);
-        prefs.putInt("ERange", val);
-        prefs.end();
-        Serial.printf("ERange set to %d\n", val);
+void SerialCommand::cmdSet(int argc, char** argv) {
+    if (!expectArgCount("set", argc, 3)) {
+        return;
     }
-}
 
-void SerialCommand::cmdHelp(int val) {
-    Serial.println("\n--- Available Commands ---");
-    for (int i = 0; i < numCommands; i++) {
-        Serial.printf("%-15s", commands[i].name);
-        if (commands[i].requiresValue) {
-            Serial.println(" [value]");
-        } else {
-            Serial.println("");
+    toLowerInPlace(argv[1]);
+    int value = 0;
+    RudderSettings candidate = *_settings;
+    const char* prefKey = nullptr;
+    String successKey;
+
+    if (strcmp(argv[1], "curve") == 0) {
+        if (!parseIntStrict(argv[2], 0, 1, value)) {
+            printErr("curve must be 0|1");
+            return;
         }
+        candidate.Curve = value;
+        prefKey = "Curve";
+        successKey = "Curve";
+    } else if (strcmp(argv[1], "filter") == 0) {
+        if (!parseIntStrict(argv[2], 0, 1, value)) {
+            printErr("filter must be 0|1");
+            return;
+        }
+        candidate.Filter = value;
+        prefKey = "Filter";
+        successKey = "Filter";
+    } else if (strcmp(argv[1], "min_l") == 0) {
+        if (!parseIntStrict(argv[2], SERIAL_PARAM_MIN, SERIAL_PARAM_MAX, value)) {
+            printErr("min_l out of range (1-4095)");
+            return;
+        }
+        candidate.minRudder_L = value;
+        prefKey = "minRudder_L";
+        successKey = "minRudder_L";
+    } else if (strcmp(argv[1], "min_r") == 0) {
+        if (!parseIntStrict(argv[2], SERIAL_PARAM_MIN, SERIAL_PARAM_MAX, value)) {
+            printErr("min_r out of range (1-4095)");
+            return;
+        }
+        candidate.minRudder_R = value;
+        prefKey = "minRudder_R";
+        successKey = "minRudder_R";
+    } else if (strcmp(argv[1], "max_l") == 0) {
+        if (!parseIntStrict(argv[2], SERIAL_PARAM_MIN, SERIAL_PARAM_MAX, value)) {
+            printErr("max_l out of range (1-4095)");
+            return;
+        }
+        candidate.maxRudder_L = value;
+        prefKey = "maxRudder_L";
+        successKey = "maxRudder_L";
+    } else if (strcmp(argv[1], "max_r") == 0) {
+        if (!parseIntStrict(argv[2], SERIAL_PARAM_MIN, SERIAL_PARAM_MAX, value)) {
+            printErr("max_r out of range (1-4095)");
+            return;
+        }
+        candidate.maxRudder_R = value;
+        prefKey = "maxRudder_R";
+        successKey = "maxRudder_R";
+    } else if (strcmp(argv[1], "erange") == 0) {
+        if (!parseIntStrict(argv[2], SERIAL_PARAM_MIN, SERIAL_PARAM_MAX, value)) {
+            printErr("erange out of range (1-4095)");
+            return;
+        }
+        candidate.ERange = value;
+        prefKey = "ERange";
+        successKey = "ERange";
+    } else {
+        printErr("unknown set key; use curve|filter|min_l|min_r|max_l|max_r|erange");
+        return;
     }
-    Serial.println("--------------------------");
+
+    String reason;
+    if (!validateSettings(candidate, reason)) {
+        printErr(reason);
+        return;
+    }
+
+    *_settings = candidate;
+    persistInt(prefKey, value);
+    printOk(successKey + "=" + String(value) + " persisted");
+}
+
+void SerialCommand::cmdSave(int argc, char** argv) {
+    (void)argv;
+    if (!expectArgCount("save", argc, 1)) {
+        return;
+    }
+    printOk("save is not required; values persist immediately");
+}
+
+void SerialCommand::cmdFactoryReset(int argc, char** argv) {
+    (void)argv;
+    if (!expectArgCount("factory_reset", argc, 1)) {
+        return;
+    }
+
+    prefs.begin("presets", false);
+    prefs.putInt("minRudder_L", DEFAULT_MIN_L);
+    prefs.putInt("minRudder_R", DEFAULT_MIN_R);
+    prefs.putInt("maxRudder_L", DEFAULT_MAX_L);
+    prefs.putInt("maxRudder_R", DEFAULT_MAX_R);
+    prefs.putInt("ERange", DEFAULT_ERANGE);
+    prefs.putInt("MODE", DEFAULT_MODE);
+    prefs.putInt("Curve", DEFAULT_CURVE);
+    prefs.putInt("Filter", DEFAULT_FILTER);
+    prefs.end();
+
+    loadPreferences();
+    printOk("factory defaults restored and persisted");
 }
 
 void SerialCommand::loadPreferences() {
-     prefs.begin("presets", false);
-    
+    prefs.begin("presets", false);
+
     int bootCount = prefs.getInt("bootCount", 0);
     if (bootCount == 0) {
         prefs.putInt("minRudder_L", DEFAULT_MIN_L);
@@ -224,9 +322,108 @@ void SerialCommand::loadPreferences() {
     _settings->MODE = prefs.getInt("MODE", DEFAULT_MODE);
     _settings->Curve = prefs.getInt("Curve", DEFAULT_CURVE);
     _settings->Filter = prefs.getInt("Filter", DEFAULT_FILTER);
-    
     _settings->printControl = false;
     _settings->Test = false;
 
+    String reason;
+    if (!validateSettings(*_settings, reason)) {
+        _settings->minRudder_L = DEFAULT_MIN_L;
+        _settings->minRudder_R = DEFAULT_MIN_R;
+        _settings->maxRudder_L = DEFAULT_MAX_L;
+        _settings->maxRudder_R = DEFAULT_MAX_R;
+        _settings->ERange = DEFAULT_ERANGE;
+        _settings->MODE = DEFAULT_MODE;
+        _settings->Curve = DEFAULT_CURVE;
+        _settings->Filter = DEFAULT_FILTER;
+
+        prefs.putInt("minRudder_L", _settings->minRudder_L);
+        prefs.putInt("minRudder_R", _settings->minRudder_R);
+        prefs.putInt("maxRudder_L", _settings->maxRudder_L);
+        prefs.putInt("maxRudder_R", _settings->maxRudder_R);
+        prefs.putInt("ERange", _settings->ERange);
+        prefs.putInt("MODE", _settings->MODE);
+        prefs.putInt("Curve", _settings->Curve);
+        prefs.putInt("Filter", _settings->Filter);
+        printErr(String("stored settings invalid: ") + reason + "; restored defaults");
+    }
+
+    if (_settings->MODE != MODE_BLE && _settings->MODE != MODE_HID) {
+        _settings->MODE = DEFAULT_MODE;
+        prefs.putInt("MODE", _settings->MODE);
+    }
+    if (_settings->Curve < 0 || _settings->Curve > 1) {
+        _settings->Curve = DEFAULT_CURVE;
+        prefs.putInt("Curve", _settings->Curve);
+    }
+    if (_settings->Filter < 0 || _settings->Filter > 1) {
+        _settings->Filter = DEFAULT_FILTER;
+        prefs.putInt("Filter", _settings->Filter);
+    }
+
     prefs.end();
+}
+
+void SerialCommand::persistInt(const char* key, int value) {
+    prefs.begin("presets", false);
+    prefs.putInt(key, value);
+    prefs.end();
+}
+
+bool SerialCommand::parseIntStrict(const char* text, int minValue, int maxValue, int& out) {
+    if (text == nullptr || *text == '\0') {
+        return false;
+    }
+
+    errno = 0;
+    char* endPtr = nullptr;
+    long parsed = strtol(text, &endPtr, 10);
+    if (errno != 0 || endPtr == text || *endPtr != '\0') {
+        return false;
+    }
+    if (parsed < (long)minValue || parsed > (long)maxValue) {
+        return false;
+    }
+    if (parsed < INT_MIN || parsed > INT_MAX) {
+        return false;
+    }
+
+    out = (int)parsed;
+    return true;
+}
+
+bool SerialCommand::validateSettings(const RudderSettings& candidate, String& reason) {
+    if (candidate.maxRudder_L <= candidate.minRudder_L + candidate.ERange) {
+        reason = "max_l must be > min_l + erange";
+        return false;
+    }
+    if (candidate.maxRudder_R <= candidate.minRudder_R + candidate.ERange) {
+        reason = "max_r must be > min_r + erange";
+        return false;
+    }
+    if (candidate.MODE != MODE_BLE && candidate.MODE != MODE_HID) {
+        reason = "mode must be 0 or 1";
+        return false;
+    }
+    if ((candidate.Curve != 0 && candidate.Curve != 1) ||
+        (candidate.Filter != 0 && candidate.Filter != 1)) {
+        reason = "curve/filter must be 0 or 1";
+        return false;
+    }
+    return true;
+}
+
+bool SerialCommand::expectArgCount(const char* cmd, int argc, int expected) {
+    if (argc != expected) {
+        printErr(String(cmd) + " expects " + String(expected - 1) + " argument(s)");
+        return false;
+    }
+    return true;
+}
+
+void SerialCommand::printOk(const String& message) {
+    Serial.println(String("OK: ") + message);
+}
+
+void SerialCommand::printErr(const String& message) {
+    Serial.println(String("ERR: ") + message);
 }

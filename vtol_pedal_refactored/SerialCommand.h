@@ -8,12 +8,11 @@
 class SerialCommand; // Forward declaration
 
 // Define member function pointer type for command handlers
-typedef void (SerialCommand::*CmdHandler)(int value);
+typedef void (SerialCommand::*CmdHandler)(int argc, char** argv);
 
 struct CommandEntry {
     const char* name;
     CmdHandler handler;
-    bool requiresValue; // Does this command require a subsequent parameter input?
 };
 
 class SerialCommand {
@@ -25,39 +24,41 @@ public:
 private:
     RudderSettings* _settings;
     Preferences prefs;
-    
-    char inputBuffer[64];
+
+    static const int INPUT_BUFFER_SIZE = 128;
+    static const int MAX_TOKENS = 8;
+
+    char inputBuffer[INPUT_BUFFER_SIZE];
     int inputIndex = 0;
-    
-    // State machine
-    bool waitingForValue = false;
-    const CommandEntry* pendingCommand = nullptr;
 
     // Command Registry
     static const CommandEntry commands[];
     static const int numCommands;
 
     // Core logic
-    void handleInput(const char* input);
+    void handleLine(char* input);
     const CommandEntry* findCommand(const char* name);
-    
+    int tokenize(char* input, char** argv, int maxTokens);
+    void toLowerInPlace(char* text);
+
     // Command Handlers
-    void cmdReset(int val);
-    void cmdBle(int val);
-    void cmdHid(int val);
-    void cmdDebug(int val);
-    void cmdCurve(int val);
-    void cmdFilter(int val);
-    void cmdMinL(int val);
-    void cmdMinR(int val);
-    void cmdMaxL(int val);
-    void cmdMaxR(int val);
-    void cmdERange(int val);
-    void cmdTest(int val);
-    void cmdHelp(int val);
+    void cmdHelp(int argc, char** argv);
+    void cmdStatus(int argc, char** argv);
+    void cmdMode(int argc, char** argv);
+    void cmdDebug(int argc, char** argv);
+    void cmdTest(int argc, char** argv);
+    void cmdSet(int argc, char** argv);
+    void cmdSave(int argc, char** argv);
+    void cmdFactoryReset(int argc, char** argv);
 
     // Helpers
     void loadPreferences();
+    void persistInt(const char* key, int value);
+    bool parseIntStrict(const char* text, int minValue, int maxValue, int& out);
+    bool validateSettings(const RudderSettings& candidate, String& reason);
+    bool expectArgCount(const char* cmd, int argc, int expected);
+    void printOk(const String& message);
+    void printErr(const String& message);
 };
 
 #endif
