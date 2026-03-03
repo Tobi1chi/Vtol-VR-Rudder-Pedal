@@ -1,5 +1,10 @@
 # VTOL VR Rudder Pedal (ESP32)
 
+## Languages
+
+- English: `readme.md`
+- 中文: `readme_zh.md`
+
 ## Serial CLI (`vtol_pedal_refactored`)
 
 Baud rate: `115200`
@@ -91,3 +96,11 @@ This folder reuses the ESP32 refactored architecture for:
 - RP2040 serial supports interactive input:
   - `mode`, `debug`, `test`, `set`, `set <key>` can prompt for the next value.
   - `cancel` exits current interactive input state.
+
+### UF2 flashing
+
+1. Press and hold the `BOOT` button on the RP2040 board.
+2. While holding `BOOT`, plug the device into USB.
+3. Release `BOOT` after the board appears as a USB mass storage device.
+4. Copy the compiled `.uf2` file directly into that device storage.
+5. The board will reboot automatically and run the new firmware.

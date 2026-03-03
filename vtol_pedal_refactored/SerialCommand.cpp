@@ -325,28 +325,6 @@ void SerialCommand::loadPreferences() {
     _settings->printControl = false;
     _settings->Test = false;
 
-    String reason;
-    if (!validateSettings(*_settings, reason)) {
-        _settings->minRudder_L = DEFAULT_MIN_L;
-        _settings->minRudder_R = DEFAULT_MIN_R;
-        _settings->maxRudder_L = DEFAULT_MAX_L;
-        _settings->maxRudder_R = DEFAULT_MAX_R;
-        _settings->ERange = DEFAULT_ERANGE;
-        _settings->MODE = DEFAULT_MODE;
-        _settings->Curve = DEFAULT_CURVE;
-        _settings->Filter = DEFAULT_FILTER;
-
-        prefs.putInt("minRudder_L", _settings->minRudder_L);
-        prefs.putInt("minRudder_R", _settings->minRudder_R);
-        prefs.putInt("maxRudder_L", _settings->maxRudder_L);
-        prefs.putInt("maxRudder_R", _settings->maxRudder_R);
-        prefs.putInt("ERange", _settings->ERange);
-        prefs.putInt("MODE", _settings->MODE);
-        prefs.putInt("Curve", _settings->Curve);
-        prefs.putInt("Filter", _settings->Filter);
-        printErr(String("stored settings invalid: ") + reason + "; restored defaults");
-    }
-
     if (_settings->MODE != MODE_BLE && _settings->MODE != MODE_HID) {
         _settings->MODE = DEFAULT_MODE;
         prefs.putInt("MODE", _settings->MODE);
@@ -358,6 +336,22 @@ void SerialCommand::loadPreferences() {
     if (_settings->Filter < 0 || _settings->Filter > 1) {
         _settings->Filter = DEFAULT_FILTER;
         prefs.putInt("Filter", _settings->Filter);
+    }
+
+    String reason;
+    if (!validateSettings(*_settings, reason)) {
+        _settings->minRudder_L = DEFAULT_MIN_L;
+        _settings->minRudder_R = DEFAULT_MIN_R;
+        _settings->maxRudder_L = DEFAULT_MAX_L;
+        _settings->maxRudder_R = DEFAULT_MAX_R;
+        _settings->ERange = DEFAULT_ERANGE;
+
+        prefs.putInt("minRudder_L", _settings->minRudder_L);
+        prefs.putInt("minRudder_R", _settings->minRudder_R);
+        prefs.putInt("maxRudder_L", _settings->maxRudder_L);
+        prefs.putInt("maxRudder_R", _settings->maxRudder_R);
+        prefs.putInt("ERange", _settings->ERange);
+        printErr(String("stored calibration invalid: ") + reason + "; restored calibration defaults");
     }
 
     prefs.end();
