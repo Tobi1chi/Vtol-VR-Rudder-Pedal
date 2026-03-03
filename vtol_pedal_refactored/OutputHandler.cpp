@@ -20,7 +20,7 @@ void OutputHandler::begin() {
 }
 
 void OutputHandler::send(int value, int mode) {
-    if (mode == 1) {
+    if (mode == MODE_HID) {
         // HID mode
         hidGamepad.leftStick(value, 0); 
     } else {
