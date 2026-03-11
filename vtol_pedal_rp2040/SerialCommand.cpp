@@ -51,6 +51,7 @@ void SerialCommand::begin(RudderSettings* settings) {
     EEPROM.begin(sizeof(StoredSettings));
     loadFromStorage();
     Serial.println("OK: serial CLI ready. Type 'help'.");
+    Serial.println("INFO: RP2040 build does not support BLE. This firmware uses USB HID only.");
 }
 
 void SerialCommand::loadDefaults() {
@@ -280,8 +281,12 @@ bool SerialCommand::applyModeValue(const char* modeToken) {
     strncpy(token, modeToken, sizeof(token) - 1);
     token[sizeof(token) - 1] = '\0';
     toLowerInPlace(token);
+    if (strcmp(token, "ble") == 0) {
+        printErr("BLE mode is disabled on RP2040: this build supports USB HID only");
+        return false;
+    }
     if (strcmp(token, "hid") != 0) {
-        printErr("rp2040 firmware currently supports only 'mode hid'");
+        printErr("mode must be hid; BLE is disabled on RP2040");
         return false;
     }
     _settings->MODE = MODE_HID;
@@ -408,6 +413,7 @@ void SerialCommand::cmdHelp(int argc, char** argv) {
     Serial.println("  help");
     Serial.println("  status");
     Serial.println("  mode hid");
+    Serial.println("  mode ble   (disabled on RP2040: this build has no BLE support)");
     Serial.println("  debug on|off");
     Serial.println("  test on|off");
     Serial.println("  set curve 0|1");
@@ -434,6 +440,7 @@ void SerialCommand::cmdStatus(int argc, char** argv) {
         return;
     }
     Serial.printf("STATUS: MODE=HID\n");
+    Serial.printf("STATUS: BLE=DISABLED (RP2040 build has no BLE support)\n");
     Serial.printf("STATUS: Curve=%d\n", _settings->Curve);
     Serial.printf("STATUS: Filter=%d\n", _settings->Filter);
     Serial.printf("STATUS: minRudder_L=%d\n", _settings->minRudder_L);
@@ -448,7 +455,7 @@ void SerialCommand::cmdStatus(int argc, char** argv) {
 void SerialCommand::cmdMode(int argc, char** argv) {
     if (argc == 1) {
         _awaitingModeArg = true;
-        Serial.println("OK: enter mode (hid):");
+        Serial.println("OK: enter mode (hid only; ble is disabled on RP2040):");
         return;
     }
     if (argc != 2) {
