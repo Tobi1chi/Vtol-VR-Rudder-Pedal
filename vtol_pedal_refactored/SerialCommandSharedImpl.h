@@ -41,6 +41,7 @@ const int SerialCommand::numCommands = sizeof(commands) / sizeof(commands[0]);
 SerialCommand::SerialCommand()
     : _settings(nullptr),
       _inputIndex(0),
+      _discardUntilNewline(false),
       _awaitingModeArg(false),
       _awaitingDebugArg(false),
       _awaitingTestArg(false),
@@ -191,6 +192,14 @@ void SerialCommand::restoreFactoryDefaults() {
 void SerialCommand::checkSerial() {
   while (Serial.available()) {
     char ch = Serial.read();
+    if (_discardUntilNewline) {
+      if (ch == '\n' || ch == '\r') {
+        _discardUntilNewline = false;
+        _inputIndex = 0;
+      }
+      continue;
+    }
+
     if (ch == '\n' || ch == '\r') {
       if (_inputIndex > 0) {
         _inputBuffer[_inputIndex] = '\0';
@@ -201,6 +210,7 @@ void SerialCommand::checkSerial() {
       _inputBuffer[_inputIndex++] = ch;
     } else {
       _inputIndex = 0;
+      _discardUntilNewline = true;
       printErr("input too long; max 127 chars");
     }
   }

@@ -36,6 +36,7 @@ private:
 #endif
   char _inputBuffer[INPUT_BUFFER_SIZE];
   int _inputIndex;
+  bool _discardUntilNewline;
   bool _awaitingModeArg;
   bool _awaitingDebugArg;
   bool _awaitingTestArg;
