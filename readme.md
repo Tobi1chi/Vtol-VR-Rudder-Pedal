@@ -84,6 +84,25 @@ status
 - `ERange` + value -> `set erange <value>`
 - `RESET` -> `factory_reset`
 
+### CLI maintenance
+
+Board-specific CLI behavior is split into:
+- `BoardCliConfig.h`: board capability and message macros
+- `SerialCommandSharedImpl.h`: shared command implementation body
+
+To keep the three board folders aligned, update the template files under `vtol_pedal_refactored/` first, then run:
+
+```bash
+./scripts/sync_serial_command_files.sh
+```
+
+The sync script copies:
+- `SerialCommand.h`
+- `SerialCommand.cpp`
+- `SerialCommandSharedImpl.h`
+
+from `vtol_pedal_refactored/` into `vtol_pedal_esp32c3/` and `vtol_pedal_rp2040/`.
+
 ## RP2040 version (`vtol_pedal_rp2040`)
 
 This folder reuses the ESP32 refactored architecture for:

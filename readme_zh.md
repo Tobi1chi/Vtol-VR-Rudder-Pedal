@@ -41,6 +41,25 @@
 - 数字解析严格（例如 `12abc` 会被拒绝）。
 - 非法输入不会写入持久化配置。
 
+### CLI 维护方式
+
+板级 CLI 差异目前拆分为：
+- `BoardCliConfig.h`：定义板级能力和提示文案宏
+- `SerialCommandSharedImpl.h`：共享命令实现主体
+
+为了保持三个板子目录下的 CLI 文件同步，建议先修改 `vtol_pedal_refactored/` 下的模板文件，再执行：
+
+```bash
+./scripts/sync_serial_command_files.sh
+```
+
+该脚本会把以下文件：
+- `SerialCommand.h`
+- `SerialCommand.cpp`
+- `SerialCommandSharedImpl.h`
+
+从 `vtol_pedal_refactored/` 同步到 `vtol_pedal_esp32c3/` 和 `vtol_pedal_rp2040/`。
+
 ## RP2040 版本（`vtol_pedal_rp2040`）
 
 RP2040 目录复用了 ESP32 重构版本的整体结构：

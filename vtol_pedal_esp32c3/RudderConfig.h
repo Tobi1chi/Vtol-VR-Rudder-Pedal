@@ -20,6 +20,7 @@
 #define SERIAL_PARAM_MAX 4095
 
 #define MODE_BLE 0
+#define MODE_HID 1
 
 struct RudderSettings {
   int minRudder_L;
