@@ -113,6 +113,8 @@ void SerialCommand::loadFromStorage() {
   }
 
   if (!isModeSupported(_settings->MODE)) {
+    printErr(String("stored mode unsupported: ") + disabledModeReason(_settings->MODE) +
+             "; restored default mode");
     _settings->MODE = DEFAULT_MODE;
     persistSetting("MODE", _settings->MODE);
   }
@@ -140,7 +142,16 @@ void SerialCommand::loadFromStorage() {
     return;
   }
 
+  if (!isModeSupported(candidate.MODE)) {
+    printErr(String("saved mode unsupported: ") + disabledModeReason(candidate.MODE) +
+             "; restored default mode");
+    candidate.MODE = DEFAULT_MODE;
+  }
+
   *_settings = candidate;
+  if (!isModeSupported(stored.MODE)) {
+    persistRuntimeSettings();
+  }
   printOk("loaded saved settings");
 #endif
 }
@@ -350,10 +361,6 @@ bool SerialCommand::validateSettings(const RudderSettings& candidate, String& re
   if ((candidate.Curve != 0 && candidate.Curve != 1) ||
       (candidate.Filter != 0 && candidate.Filter != 1)) {
     reason = "curve/filter must be 0 or 1";
-    return false;
-  }
-  if (!isModeSupported(candidate.MODE)) {
-    reason = disabledModeReason(candidate.MODE);
     return false;
   }
   return true;
