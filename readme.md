@@ -11,6 +11,11 @@ Baud rate: `115200`
 
 The refactored firmware uses a single-line CLI. Old two-step serial input is no longer supported.
 
+Available modes depend on the target board:
+- `vtol_pedal_refactored` (ESP32 native-USB target): supports `mode hid|ble`
+- `vtol_pedal_esp32c3`: supports `mode ble` only; `mode hid` prints a disabled message
+- `vtol_pedal_rp2040`: supports `mode hid` only; `mode ble` prints a disabled message
+
 ### Command list
 
 - `help`
@@ -79,6 +84,25 @@ status
 - `ERange` + value -> `set erange <value>`
 - `RESET` -> `factory_reset`
 
+### CLI maintenance
+
+Board-specific CLI behavior is split into:
+- `BoardCliConfig.h`: board capability and message macros
+- `SerialCommandSharedImpl.h`: shared command implementation body
+
+To keep the three board folders aligned, update the template files under `vtol_pedal_refactored/` first, then run:
+
+```bash
+./scripts/sync_serial_command_files.sh
+```
+
+The sync script copies:
+- `SerialCommand.h`
+- `SerialCommand.cpp`
+- `SerialCommandSharedImpl.h`
+
+from `vtol_pedal_refactored/` into `vtol_pedal_esp32c3/` and `vtol_pedal_rp2040/`.
+
 ## RP2040 version (`vtol_pedal_rp2040`)
 
 This folder reuses the ESP32 refactored architecture for:
@@ -90,6 +114,8 @@ This folder reuses the ESP32 refactored architecture for:
 
 - Current RP2040 build outputs USB HID via `Joystick` library (`Joystick.h`).
 - RP2040 build currently supports `mode hid` only.
+- On boot the CLI prints a `BLE disabled` notice, and `status` reports `BLE=DISABLED`.
+- Entering `mode ble` returns an explicit error that the RP2040 build has no BLE support.
 - RP2040 settings persistence is EEPROM-based:
   - `save` writes current runtime settings to EEPROM.
   - `factory_reset` restores defaults and writes them to EEPROM.
@@ -104,3 +130,17 @@ This folder reuses the ESP32 refactored architecture for:
 3. Release `BOOT` after the board appears as a USB mass storage device.
 4. Copy the compiled `.uf2` file directly into that device storage.
 5. The board will reboot automatically and run the new firmware.
+
+## ESP32-C3 version (`vtol_pedal_esp32c3`)
+
+This folder reuses most of the refactored input, filtering, and serial CLI structure, but its output capabilities differ from the original ESP32 native-USB build.
+
+### Notes
+
+- Current ESP32-C3 build supports `mode ble` only.
+- On boot the CLI prints a `USB HID disabled / BLE only` notice.
+- `status` reports `HID=DISABLED`.
+- Entering `mode hid` returns an explicit error explaining that ESP32-C3 uses `USB Serial/JTAG`, not native USB HID.
+- In the current default pin assignment:
+  - `GPIO4` / `GPIO5` are used for the two rudder ADC inputs and are a low-risk choice.
+  - `GPIO0` is currently used as the button pin; it works, but it is not the preferred default for production hardware because of boot-related constraints.
