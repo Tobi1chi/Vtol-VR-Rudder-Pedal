@@ -2,85 +2,91 @@
 #define SERIAL_COMMAND_H
 
 #include <Arduino.h>
-
-#include "BoardCliConfig.h"
-#include "RudderConfig.h"
-
-#if CLI_STORAGE_BACKEND_PREFERENCES
 #include <Preferences.h>
-#elif CLI_STORAGE_BACKEND_EEPROM
-#include <EEPROM.h>
-#endif
+
+#include "RudderConfig.h"
 
 class SerialCommand;
 typedef void (SerialCommand::*CmdHandler)(int argc, char** argv);
 
 struct CommandEntry {
-  const char* name;
-  CmdHandler handler;
+    const char* name;
+    CmdHandler handler;
 };
 
 class SerialCommand {
 public:
-  SerialCommand();
-  void begin(RudderSettings* settings);
-  void checkSerial();
+    SerialCommand();
+    void begin(RudderSettings* settings);
+    void checkSerial();
 
 private:
-  static const int INPUT_BUFFER_SIZE = 128;
-  static const int MAX_TOKENS = 8;
+    static const int INPUT_BUFFER_SIZE = 96;
+    static const int MAX_TOKENS = 4;
 
-  RudderSettings* _settings;
-#if CLI_STORAGE_BACKEND_PREFERENCES
-  Preferences _prefs;
-#endif
-  char _inputBuffer[INPUT_BUFFER_SIZE];
-  int _inputIndex;
-  bool _discardUntilNewline;
-  bool _awaitingModeArg;
-  bool _awaitingDebugArg;
-  bool _awaitingTestArg;
-  bool _awaitingSetKey;
-  bool _awaitingSetValue;
-  char _pendingSetKey[16];
+    enum PendingInput {
+        PendingNone,
+        PendingMode,
+        PendingDebug,
+        PendingTest,
+        PendingSetKey,
+        PendingSetValue
+    };
 
-  static const CommandEntry commands[];
-  static const int numCommands;
+    RudderSettings* _settings;
+    Preferences prefs;
 
-  void loadDefaults();
-  void loadFromStorage();
-  void persistRuntimeSettings();
-  void persistSetting(const char* key, int value);
-  void restoreFactoryDefaults();
+    char inputBuffer[INPUT_BUFFER_SIZE];
+    int inputIndex = 0;
+    bool discardUntilNewline = false;
+    PendingInput pendingInput = PendingNone;
+    char pendingSetKey[16];
 
-  void handleLine(char* input);
-  bool handlePendingInput(int argc, char** argv);
-  void clearInteractiveState();
-  int tokenize(char* input, char** argv, int maxTokens);
-  void toLowerInPlace(char* text);
-  const CommandEntry* findCommand(const char* name);
-  bool parseIntStrict(const char* text, int minValue, int maxValue, int& out);
-  bool validateSettings(const RudderSettings& candidate, String& reason);
-  bool applyModeValue(const char* modeToken);
-  bool applyDebugValue(const char* debugToken);
-  bool applyTestValue(const char* testToken);
-  bool applySetValue(const char* key, const char* valueToken);
-  bool expectArgCount(const char* cmd, int argc, int expected);
-  bool isModeSupported(int mode) const;
-  const char* modeLabel(int mode) const;
-  const char* disabledModeReason(int mode) const;
-  void printBoardStatusNotices() const;
-  void printOk(const String& message);
-  void printErr(const String& message);
+    static const CommandEntry commands[];
+    static const int numCommands;
 
-  void cmdHelp(int argc, char** argv);
-  void cmdStatus(int argc, char** argv);
-  void cmdMode(int argc, char** argv);
-  void cmdDebug(int argc, char** argv);
-  void cmdTest(int argc, char** argv);
-  void cmdSet(int argc, char** argv);
-  void cmdSave(int argc, char** argv);
-  void cmdFactoryReset(int argc, char** argv);
+    void handleInput(char* input);
+    int tokenize(char* input, char** argv, int maxTokens);
+    void toLowerInPlace(char* text);
+    const CommandEntry* findCommand(const char* name);
+    bool handlePendingInput(int argc, char** argv);
+    void clearPendingInput();
+
+    bool parseIntStrict(const char* text, int minValue, int maxValue, int& out);
+    bool validateSettings(const RudderSettings& candidate, String& reason);
+    void persistSetting(const char* key, int value);
+    void persistRuntimeSettings();
+    void printOk(const String& message);
+    void printErr(const String& message);
+
+    bool applyModeValue(const char* modeToken);
+    bool applyDebugValue(const char* debugToken);
+    bool applyTestValue(const char* testToken);
+    bool applySetValue(const char* key, const char* valueToken);
+    void printStatus();
+
+    void cmdHelp(int argc, char** argv);
+    void cmdStatus(int argc, char** argv);
+    void cmdMode(int argc, char** argv);
+    void cmdDebug(int argc, char** argv);
+    void cmdTest(int argc, char** argv);
+    void cmdSet(int argc, char** argv);
+    void cmdSave(int argc, char** argv);
+    void cmdFactoryReset(int argc, char** argv);
+    void cmdCancel(int argc, char** argv);
+
+    void cmdReset(int argc, char** argv);
+    void cmdBle(int argc, char** argv);
+    void cmdHid(int argc, char** argv);
+    void cmdCurve(int argc, char** argv);
+    void cmdFilter(int argc, char** argv);
+    void cmdMinL(int argc, char** argv);
+    void cmdMinR(int argc, char** argv);
+    void cmdMaxL(int argc, char** argv);
+    void cmdMaxR(int argc, char** argv);
+    void cmdERange(int argc, char** argv);
+
+    void loadPreferences();
 };
 
 #endif
